@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base
@@ -15,9 +14,9 @@ def utcnow() -> datetime:
 class AlertHistory(Base):
     __tablename__ = "alert_history"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    rule_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("auto_decision_rules.id"), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=lambda: uuid4().hex)
+    rule_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("auto_decision_rules.id"), nullable=False, index=True)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
     pair: Mapped[str] = mapped_column(String(7), nullable=False)
     trigger_mode: Mapped[str] = mapped_column(String(16), nullable=False)
     evaluated_value: Mapped[str | None] = mapped_column(String(64), nullable=True)

@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 
 import { MarkdownContent } from "../../../components/markdown-content";
-import { ensureDemoAuth } from "../../../lib/demo-auth";
+import { authorizedDemoFetch, ensureDemoAuth } from "../../../lib/demo-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010/api";
 const SETTLEMENT_CACHE_KEY = "smartfx_settlement_request";
@@ -88,14 +88,8 @@ function ProReportContent() {
 
     async function pollJob() {
       try {
-        const { token } = await ensureDemoAuth();
-
         for (let attempt = 0; attempt < 8; attempt += 1) {
-          const response = await fetch(`${API_BASE}/pro/report/status/${jobId}`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          });
+          const response = await authorizedDemoFetch(`${API_BASE}/pro/report/status/${jobId}`);
 
           if (!response.ok) {
             throw new Error(`获取报告状态失败：${response.status}`);
@@ -141,12 +135,10 @@ function ProReportContent() {
         throw new Error("没有找到最近一次结算参数，请先去结算计算器生成分析。");
       }
 
-      const { token } = await ensureDemoAuth();
-      const response = await fetch(`${API_BASE}/pro/report/generate`, {
+      const response = await authorizedDemoFetch(`${API_BASE}/pro/report/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           settlement_data: JSON.parse(cached),

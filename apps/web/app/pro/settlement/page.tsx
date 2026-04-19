@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ensureDemoAuth } from "../../../lib/demo-auth";
+import { authorizedDemoFetch, ensureDemoAuth } from "../../../lib/demo-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010/api";
 const SETTLEMENT_CACHE_KEY = "smartfx_settlement_request";
@@ -78,13 +78,11 @@ export default function ProSettlementPage() {
     setError(null);
 
     try {
-      const { token } = await ensureDemoAuth();
       const payload = buildPayload();
-      const response = await fetch(`${API_BASE}/pro/settlement`, {
+      const response = await authorizedDemoFetch(`${API_BASE}/pro/settlement`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       });
@@ -108,15 +106,13 @@ export default function ProSettlementPage() {
     setError(null);
 
     try {
-      const { token } = await ensureDemoAuth();
       const settlementData = buildPayload();
       window.sessionStorage.setItem(SETTLEMENT_CACHE_KEY, JSON.stringify(settlementData));
 
-      const response = await fetch(`${API_BASE}/pro/report/generate`, {
+      const response = await authorizedDemoFetch(`${API_BASE}/pro/report/generate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           settlement_data: settlementData,

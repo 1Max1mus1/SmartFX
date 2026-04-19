@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
-import { ensureDemoAuth } from "../../lib/demo-auth";
+import { authorizedDemoFetch, ensureDemoAuth } from "../../lib/demo-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010/api";
 
@@ -65,12 +65,10 @@ export default function AssistantPage() {
     setError(null);
 
     try {
-      const { token } = await ensureDemoAuth();
-      const response = await fetch(`${API_BASE}/ai/chat`, {
+      const response = await authorizedDemoFetch(`${API_BASE}/ai/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           message: draft.trim(),

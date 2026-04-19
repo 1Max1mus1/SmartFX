@@ -1,8 +1,7 @@
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Text
-from sqlalchemy.dialects.postgresql import ENUM, UUID
+from sqlalchemy import JSON, Boolean, Date, DateTime, Enum, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base
@@ -15,12 +14,12 @@ def utcnow() -> datetime:
 class DailyReport(Base):
     __tablename__ = "daily_reports"
 
-    signal_usd_cny_enum = ENUM("buy", "hold", "sell", name="signal_enum", create_type=False)
-    signal_hkd_cny_enum = ENUM("buy", "hold", "sell", name="signal_enum2", create_type=False)
-    signal_usd_hkd_enum = ENUM("buy", "hold", "sell", name="signal_enum3", create_type=False)
-    signal_hkd_usd_enum = ENUM("buy", "hold", "sell", name="signal_enum4", create_type=False)
+    signal_usd_cny_enum = Enum("buy", "hold", "sell", name="signal_enum")
+    signal_hkd_cny_enum = Enum("buy", "hold", "sell", name="signal_enum2")
+    signal_usd_hkd_enum = Enum("buy", "hold", "sell", name="signal_enum3")
+    signal_hkd_usd_enum = Enum("buy", "hold", "sell", name="signal_enum4")
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=lambda: uuid4().hex)
     report_date: Mapped[date] = mapped_column(Date, unique=True, nullable=False, index=True)
     rates_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False)
     ai_content: Mapped[str] = mapped_column(Text, nullable=False)

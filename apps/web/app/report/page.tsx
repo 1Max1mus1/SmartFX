@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { MarkdownContent } from "../../components/markdown-content";
-import { ensureDemoAuth } from "../../lib/demo-auth";
+import { authorizedDemoFetch, ensureDemoAuth } from "../../lib/demo-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010/api";
 
@@ -47,12 +47,7 @@ export default function ReportPage() {
       setError(null);
 
       try {
-        const { token } = await ensureDemoAuth();
-        const response = await fetch(`${API_BASE}/report/daily`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
+        const response = await authorizedDemoFetch(`${API_BASE}/report/daily`);
 
         if (!response.ok) {
           throw new Error(`AI 简报加载失败：${response.status}`);

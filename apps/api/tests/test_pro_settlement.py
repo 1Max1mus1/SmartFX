@@ -4,6 +4,7 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from src.application import app
+from src.clients.kimi_client import KimiClient
 
 
 def _auth_headers(client: TestClient, plan: str = "pro") -> dict[str, str]:
@@ -74,3 +75,34 @@ def test_generate_pro_report_and_poll_until_done():
     assert status_payload["result"]["title"]
     assert "仅供信息参考" in " ".join(status_payload["result"]["sections"])
 
+
+def test_settlement_report_fallback_emphasizes_business_impact():
+    client = KimiClient()
+    analysis = {
+        "pair": "USD/CNY",
+        "current_rate": 7.18,
+        "current_percentile_30d": 42.5,
+        "current_percentile_90d": 61.2,
+        "immediate_value": 359000.0,
+        "projected_best_case_value": 362500.0,
+        "estimated_delta": 3500.0,
+        "recommended_window_days": 5,
+        "zone_label": "中位",
+        "narrative": "建议在未来 5 天关注更优窗口，并结合到账时间分批执行。",
+        "disclaimer": "以上内容仅供信息参考，不构成任何投资建议。",
+    }
+    request = {
+        "amount": 50000,
+        "source_currency": "USD",
+        "target_currency": "CNY",
+        "arrival_date": "2026-04-25",
+        "optimization_goal": "maximize_income",
+        "target_rate": None,
+        "latest_settlement_date": None,
+    }
+
+    result = client._build_settlement_report_fallback(analysis, request, ai_unavailable=False)
+
+    assert "出口收汇" in result["summary"]
+    assert "利润" in result["summary"]
+    assert any("商业影响" in item for item in result["sections"])

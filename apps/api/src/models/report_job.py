@@ -1,8 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import DateTime, ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base
@@ -15,8 +14,8 @@ def utcnow() -> datetime:
 class ReportJob(Base):
     __tablename__ = "report_jobs"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
-    user_id: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=lambda: uuid4().hex)
+    user_id: Mapped[str] = mapped_column(Uuid(as_uuid=False), ForeignKey("users.id"), nullable=False, index=True)
     job_type: Mapped[str] = mapped_column(String(32), nullable=False, default="settlement_report")
     job_status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending")
     input_payload: Mapped[str] = mapped_column(Text, nullable=False)

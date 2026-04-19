@@ -29,12 +29,14 @@ def verify_password(password: str, password_hash: str) -> bool:
     return hmac.compare_digest(candidate, password_hash)
 
 
-def create_access_token(subject: str) -> str:
+def create_access_token(subject: str, extra_claims: dict | None = None) -> str:
     expires_at = datetime.now(UTC) + timedelta(minutes=SETTINGS.APP.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {
         "sub": subject,
         "exp": int(expires_at.timestamp()),
     }
+    if extra_claims:
+        payload.update(extra_claims)
     payload_bytes = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
     payload_token = base64.urlsafe_b64encode(payload_bytes).decode("utf-8").rstrip("=")
     signature = hmac.new(
