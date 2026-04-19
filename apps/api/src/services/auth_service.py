@@ -12,7 +12,7 @@ from src.services.db import get_db_session
 from src.services.security import bearer_token_header, create_access_token, decode_access_token, hash_password
 
 RESPONSE = ResponseFormatter(prefix="[AuthService]")
-DEMO_USER_ID = "00000000000000000000000000000001"
+DEMO_USER_ID = "00000000-0000-0000-0000-000000000001"
 DEMO_USER_EMAIL = "demo@smartfx.ai"
 
 
@@ -48,7 +48,9 @@ def _serialize_user(user: User | DemoUser) -> UserPayload:
 class AuthService:
     @staticmethod
     async def register(session: AsyncSession, email: str, password: str, plan: str = "free") -> tuple[dict, object]:
-        _ = (session, email, password, plan)
+        _ = (session, password)
+        if email in DEMO_USERS:
+            return {}, RESPONSE.error(409, "email already registered")
         created_at = datetime.now(UTC)
         user = _demo_user(email=email, plan=plan, created_at=created_at)
         DEMO_USERS[email] = user
