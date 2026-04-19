@@ -1,0 +1,35 @@
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+apps/api/.venv/
+apps/api/smartfx.db
+apps/api/*.db
+
+# Node
+node_modules/
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+
+# Env
+.env
+.env.*
+!.env.example
+apps/api/src/config/settings.env
+
+# Editors
+.idea/
+.vscode/
+
+# Logs
+*.log
+.run-logs/
+apps/api/.run-logs/
+apps/web/.run-logs/
