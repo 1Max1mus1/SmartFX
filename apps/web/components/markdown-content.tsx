@@ -5,20 +5,23 @@ import remarkGfm from "remark-gfm";
 
 type MarkdownContentProps = {
   content: string;
+  className?: string;
 };
 
-export function MarkdownContent({ content }: MarkdownContentProps) {
+export function MarkdownContent({ content, className = "text-black/75" }: MarkdownContentProps) {
+  const textClass = className;
+
   return (
-    <div className="space-y-4 text-base leading-8 text-black/75">
+    <div className={`space-y-4 text-base leading-8 ${textClass}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          h1: ({ children }) => <h1 className="mt-2 text-3xl font-semibold text-ink">{children}</h1>,
-          h2: ({ children }) => <h2 className="mt-6 text-2xl font-semibold text-ink">{children}</h2>,
-          h3: ({ children }) => <h3 className="mt-5 text-xl font-semibold text-ink">{children}</h3>,
-          p: ({ children }) => <p className="leading-8 text-black/75">{children}</p>,
-          ul: ({ children }) => <ul className="list-disc space-y-2 pl-6 text-black/75">{children}</ul>,
-          ol: ({ children }) => <ol className="list-decimal space-y-2 pl-6 text-black/75">{children}</ol>,
+          h1: ({ children }) => <h1 className={`mt-2 text-3xl font-semibold ${textClass}`}>{children}</h1>,
+          h2: ({ children }) => <h2 className={`mt-6 text-2xl font-semibold ${textClass}`}>{children}</h2>,
+          h3: ({ children }) => <h3 className={`mt-5 text-xl font-semibold ${textClass}`}>{children}</h3>,
+          p: ({ children }) => <p className={`leading-8 ${textClass}`}>{children}</p>,
+          ul: ({ children }) => <ul className={`list-disc space-y-2 pl-6 ${textClass}`}>{children}</ul>,
+          ol: ({ children }) => <ol className={`list-decimal space-y-2 pl-6 ${textClass}`}>{children}</ol>,
           li: ({ children }) => <li>{children}</li>,
           table: ({ children }) => (
             <div className="overflow-x-auto">

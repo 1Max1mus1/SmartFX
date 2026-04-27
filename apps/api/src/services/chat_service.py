@@ -12,6 +12,7 @@ from src.repositories.chat_repository import ChatRepository
 from src.repositories.record_repository import RecordRepository
 from src.schemas.chat import ChatResponsePayload, ChatMessagePayload
 from src.schemas.format import ResponseFormatter
+from src.services.auth_service import DEMO_USER_ID
 from src.services.daily_report_service import DailyReportService
 from src.services.rate_service import RateService
 
@@ -32,7 +33,7 @@ class ChatService:
         message: str,
         session_id: str | None,
     ) -> tuple[dict, object]:
-        if getattr(user, "id", None) == "demo-user":
+        if getattr(user, "id", None) == DEMO_USER_ID:
             return await ChatService._reply_demo(session, message=message, session_id=session_id)
 
         chat_session = await ChatService._get_or_create_session(session, user, session_id, message)

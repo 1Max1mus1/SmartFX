@@ -19,6 +19,7 @@ from src.services.settlement_service import SettlementService
 
 RESPONSE = ResponseFormatter(prefix="[ProReportService]")
 DEMO_REPORT_JOBS: dict[str, dict] = {}
+ACTIVE_REPORT_TASKS: dict[str, asyncio.Task[None]] = {}
 
 
 def _utcnow() -> datetime:
@@ -26,6 +27,31 @@ def _utcnow() -> datetime:
 
 
 class ProReportService:
+    @staticmethod
+    def _track_task(job_id: str, task: asyncio.Task[None]) -> None:
+        ACTIVE_REPORT_TASKS[job_id] = task
+
+        def _cleanup(completed_task: asyncio.Task[None]) -> None:
+            ACTIVE_REPORT_TASKS.pop(job_id, None)
+            try:
+                completed_task.result()
+            except Exception:
+                # Job failure is persisted inside the job payload/status update path.
+                pass
+
+        task.add_done_callback(_cleanup)
+
+    @staticmethod
+    def _schedule_report_job(job_id: str, *, is_demo: bool) -> None:
+        existing_task = ACTIVE_REPORT_TASKS.get(job_id)
+        if existing_task and not existing_task.done():
+            return
+
+        loop = asyncio.get_running_loop()
+        runner = ProReportService._run_demo_report_job(job_id) if is_demo else ProReportService._run_report_job(job_id)
+        task = loop.create_task(runner)
+        ProReportService._track_task(job_id, task)
+
     @staticmethod
     async def create_report_job(session: AsyncSession, user: User, request: SettlementRequest) -> tuple[dict, object]:
         if user.id == DEMO_USER_ID:
@@ -41,7 +67,7 @@ class ProReportService:
                 "created_at": created_at,
                 "updated_at": created_at,
             }
-            asyncio.get_running_loop().create_task(ProReportService._run_demo_report_job(job_id))
+            ProReportService._schedule_report_job(job_id, is_demo=True)
             payload = ReportJobCreatePayload(job_id=job_id, job_status="pending", created_at=created_at)
             return payload.model_dump(mode="json"), RESPONSE.ok("demo report job created")
 
@@ -54,7 +80,7 @@ class ProReportService:
         job = await ReportJobRepository.create(session, job)
         await session.commit()
 
-        asyncio.get_running_loop().create_task(ProReportService._run_report_job(job.id))
+        ProReportService._schedule_report_job(job.id, is_demo=False)
         payload = ReportJobCreatePayload(job_id=job.id, job_status=job.job_status, created_at=job.created_at)
         return payload.model_dump(mode="json"), RESPONSE.ok("report job created")
 
@@ -64,6 +90,14 @@ class ProReportService:
             job = DEMO_REPORT_JOBS.get(job_id)
             if not job or job["user_id"] != user.id:
                 return {}, RESPONSE.error(404, "report job not found")
+
+            if job["job_status"] in {"pending", "running"} and job["result"] is None:
+                active_task = ACTIVE_REPORT_TASKS.get(job_id)
+                if not active_task or active_task.done():
+                    await ProReportService._run_demo_report_job(job_id)
+                    job = DEMO_REPORT_JOBS.get(job_id)
+                    if not job:
+                        return {}, RESPONSE.error(404, "report job not found")
 
             payload = ReportJobStatusPayload(
                 job_id=job["job_id"],
@@ -77,6 +111,14 @@ class ProReportService:
         job = await ReportJobRepository.get_by_id(session, job_id)
         if not job or job.user_id != user.id:
             return {}, RESPONSE.error(404, "report job not found")
+
+        if job.job_status in {"pending", "running"} and not job.result_payload:
+            active_task = ACTIVE_REPORT_TASKS.get(job_id)
+            if not active_task or active_task.done():
+                await ProReportService._run_report_job(job_id)
+                job = await ReportJobRepository.get_by_id(session, job_id)
+                if not job or job.user_id != user.id:
+                    return {}, RESPONSE.error(404, "report job not found")
 
         payload = ReportJobStatusPayload(
             job_id=job.id,

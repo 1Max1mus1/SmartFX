@@ -18,6 +18,8 @@ type SettlementAnalysis = {
   projected_best_case_value: number;
   estimated_delta: number;
   recommended_window_days: number;
+  recommended_window_end_date: string;
+  recommended_window_reason: string;
   zone_label: string;
   narrative: string;
   disclaimer: string;
@@ -274,6 +276,9 @@ export default function ProSettlementPage() {
                     <div className="rounded-3xl bg-[#F7FAF7] p-5">
                       <p className="text-sm text-black/40">建议观察窗口</p>
                       <p className="mt-2 text-4xl font-semibold">{analysis.recommended_window_days} 天</p>
+                      <p className="mt-3 text-sm leading-6 text-black/55">
+                        观察至 {analysis.recommended_window_end_date}
+                      </p>
                     </div>
                     <div className="rounded-3xl bg-[#F7FAF7] p-5">
                       <p className="text-sm text-black/40">立即结算参考值</p>
@@ -287,6 +292,11 @@ export default function ProSettlementPage() {
 
                   <div className="mt-6 rounded-3xl border border-[#E7C36A]/40 bg-[linear-gradient(135deg,rgba(248,239,207,0.58)_0%,rgba(242,217,139,0.52)_100%)] p-6 text-base leading-8 text-black/70">
                     {analysis.narrative}
+                  </div>
+
+                  <div className="mt-4 rounded-3xl bg-[#FBFCFA] p-5 text-sm leading-7 text-black/65">
+                    <span className="font-medium text-black/75">窗口判断：</span>
+                    {analysis.recommended_window_reason}
                   </div>
 
                   <div className="mt-6 grid gap-4 md:grid-cols-3">

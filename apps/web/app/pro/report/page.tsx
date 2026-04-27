@@ -24,6 +24,8 @@ type ReportResult = {
     projected_best_case_value: number;
     estimated_delta: number;
     recommended_window_days: number;
+    recommended_window_end_date: string;
+    recommended_window_reason: string;
     zone_label: string;
     narrative: string;
     disclaimer: string;
@@ -88,7 +90,9 @@ function ProReportContent() {
 
     async function pollJob() {
       try {
-        for (let attempt = 0; attempt < 8; attempt += 1) {
+        let reachedPollingLimit = true;
+
+        for (let attempt = 0; attempt < 45; attempt += 1) {
           const response = await authorizedDemoFetch(`${API_BASE}/pro/report/status/${jobId}`);
 
           if (!response.ok) {
@@ -106,10 +110,15 @@ function ProReportContent() {
           setError(payload.error_message);
 
           if (payload.job_status === "done" || payload.job_status === "failed") {
+            reachedPollingLimit = false;
             return;
           }
 
           await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+
+        if (!cancelled && reachedPollingLimit) {
+          setError("AI 报告仍在生成中，请稍后刷新页面继续查看结果。");
         }
       } catch (err) {
         if (!cancelled) {
@@ -264,6 +273,14 @@ function ProReportContent() {
 
                     <div className="mt-6 rounded-3xl border border-[#E7C36A]/40 bg-white p-5 text-base leading-8 text-black/70">
                       {reportResult.analysis.narrative}
+                    </div>
+                    <div className="mt-4 rounded-3xl bg-white p-5 text-sm leading-7 text-black/65">
+                      <span className="font-medium text-black/75">观察窗口：</span>
+                      {reportResult.analysis.recommended_window_days} 天，观察至{" "}
+                      {reportResult.analysis.recommended_window_end_date}。
+                      <br />
+                      <span className="font-medium text-black/75">窗口理由：</span>
+                      {reportResult.analysis.recommended_window_reason}
                     </div>
                   </section>
                 ) : null}

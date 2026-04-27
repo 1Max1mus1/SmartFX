@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import json
+import re
 from collections.abc import Sequence
 
 import httpx
@@ -17,22 +20,73 @@ class KimiClient:
         self.base_url = SETTINGS.AI.BASE_URL.rstrip("/")
 
     async def _chat_completion(self, messages: list[dict], *, max_tokens: int = 1200) -> str:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": self.model,
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                },
-            )
-            response.raise_for_status()
-            payload = response.json()
-            return payload["choices"][0]["message"]["content"].strip()
+        last_error: Exception | None = None
+
+        for attempt in range(3):
+            try:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        headers={
+                            "Authorization": f"Bearer {self.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": self.model,
+                            "messages": messages,
+                            "max_tokens": max_tokens,
+                        },
+                    )
+                    response.raise_for_status()
+                    return self._extract_message_content(response.json())
+            except Exception as exc:
+                last_error = exc
+                if attempt == 2:
+                    break
+                await asyncio.sleep(0.6 * (attempt + 1))
+
+        assert last_error is not None
+        raise last_error
+
+    def _extract_message_content(self, payload: dict) -> str:
+        choices = payload.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("AI response missing choices")
+
+        first_choice = choices[0] if isinstance(choices[0], dict) else {}
+        message = first_choice.get("message") if isinstance(first_choice, dict) else {}
+        if not isinstance(message, dict):
+            raise ValueError("AI response missing message")
+
+        content = message.get("content")
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+
+        if isinstance(content, list):
+            chunks: list[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    chunks.append(text.strip())
+                    continue
+                nested_text = item.get("content")
+                if isinstance(nested_text, str) and nested_text.strip():
+                    chunks.append(nested_text.strip())
+            if chunks:
+                return "\n".join(chunks)
+
+        raise ValueError("AI response missing textual content")
+
+    def _extract_json_object(self, text: str) -> dict:
+        fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+        candidate = fenced_match.group(1) if fenced_match else text
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise ValueError("AI response missing JSON object")
+        return json.loads(candidate[start : end + 1])
 
     def _settlement_business_impact(self, analysis: dict, request: dict) -> dict:
         impact_direction = "利润增厚" if request["optimization_goal"] == "maximize_income" else "成本压降"
@@ -140,20 +194,66 @@ class KimiClient:
             ]
         )
 
+    def _build_settlement_window_fallback(self, analysis: dict, request: dict, *, ai_unavailable: bool) -> dict:
+        percentile_30d = analysis["current_percentile_30d"]
+        if request["optimization_goal"] == "maximize_income":
+            if percentile_30d >= 80:
+                days = 2
+            elif percentile_30d >= 60:
+                days = 4
+            elif percentile_30d <= 25:
+                days = 9
+            else:
+                days = 6
+        else:
+            if percentile_30d <= 20:
+                days = 1
+            elif percentile_30d <= 40:
+                days = 3
+            elif percentile_30d >= 75:
+                days = 7
+            else:
+                days = 5
+
+        source_label = "基础规则" if ai_unavailable else "默认模型"
+        reason = (
+            f"{source_label}判断当前 30 天分位为 {percentile_30d:.2f}% ，"
+            f"结合 {analysis['zone_label']} 区间位置与 {request['optimization_goal']} 目标，"
+            f"建议先观察 {days} 天，再结合到账节奏决定是否执行。"
+        )
+        return {
+            "recommended_window_days": days,
+            "recommended_window_reason": reason,
+        }
+
     def _build_settlement_report_fallback(self, analysis: dict, request: dict, *, ai_unavailable: bool) -> dict:
         business_impact = self._settlement_business_impact(analysis, request)
         scenario = self._infer_settlement_scenario(request)
         title = "SmartFX AI 结算分析报告"
         summary = (
-            f"本次结算场景为 {scenario['scenario_name']}，即 {request['amount']} {request['source_currency']} 兑换到 {request['target_currency']}，"
-            f"当前参考汇率为 {analysis['current_rate']:.4f}，立即结算的参考价值约为 {analysis['immediate_value']:.2f}。"
-            f"若等待更优窗口，对{business_impact['impact_direction']}的参考改善约为 {business_impact['estimated_delta']:.2f}，"
-            f"约占本次结算金额的 {business_impact['delta_ratio_pct']:.2f}%，应重点关注{scenario['focus_metric']}。"
+            f"本次结算场景为{scenario['scenario_name']}，即 {request['amount']} {request['source_currency']} "
+            f"兑换为 {request['target_currency']}。当前参考汇率为 {analysis['current_rate']:.4f}，"
+            f"立即结算的参考价值约为 {analysis['immediate_value']:.2f}。若等待更优窗口，"
+            f"对{business_impact['impact_direction']}的参考改善约为 {business_impact['estimated_delta']:.2f}，"
+            f"约占本次结算金额的 {business_impact['delta_ratio_pct']:.2f}%，应重点关注"
+            f"{scenario['focus_metric']}。"
         )
         sections = [
-            f"商业影响：当前立即结算参考值约为 {business_impact['immediate_value']:.2f}，更优窗口下可能达到 {business_impact['projected_best_case_value']:.2f}，两者差额约为 {business_impact['estimated_delta']:.2f}，可视为本次结算对{scenario['focus_metric']}的浮动区间。",
-            f"执行建议：当前区间位置为 {analysis['zone_label']}，建议结合 {analysis['recommended_window_days']} 天观察窗口、到账时间和资金安排来执行。",
-            f"经营提示：建议把 {business_impact['estimated_delta']:.2f} {request['target_currency']} 视为经营敏感差额，{scenario['management_action']}。",
+            (
+                f"商业影响：当前立即结算参考价值约为 {business_impact['immediate_value']:.2f}，"
+                f"更优窗口下可能达到 {business_impact['projected_best_case_value']:.2f}，"
+                f"两者差额约为 {business_impact['estimated_delta']:.2f}，可视为本次结算对"
+                f"{scenario['focus_metric']}的波动区间。"
+            ),
+            (
+                f"执行建议：当前区间位置为 {analysis['zone_label']}，建议结合 "
+                f"{analysis['recommended_window_days']} 天观察窗口、到账时间和资金安排来执行。"
+            ),
+            f"窗口理由：{analysis['recommended_window_reason']}",
+            (
+                f"经营提示：建议把 {business_impact['estimated_delta']:.2f} {request['target_currency']} "
+                f"视为经营敏感差额，{scenario['management_action']}。"
+            ),
             analysis["narrative"],
         ]
         if ai_unavailable:
@@ -184,9 +284,27 @@ class KimiClient:
         lines = [line.strip() for line in markdown_report.splitlines() if line.strip()]
         content_lines = [line.lstrip("- ").strip() for line in lines if not line.startswith("#")]
 
-        summary = next((line for line in content_lines if line != "摘要" and line != "关键结论"), "暂无可用摘要。")
+        summary = next((line for line in content_lines if line not in {"摘要", "关键结论"}), "暂无可用摘要。")
         sections = [line for line in content_lines if line not in {"摘要", "关键结论", summary}]
-        return summary, sections[:4]
+        return summary, sections[:5]
+
+    def _finalize_settlement_report(self, markdown_report: str, analysis: dict, request: dict) -> dict:
+        if not isinstance(markdown_report, str) or len(markdown_report.strip()) < 40:
+            return self._build_settlement_report_fallback(analysis, request, ai_unavailable=True)
+
+        if DISCLAIMER not in markdown_report:
+            markdown_report = f"{markdown_report}\n\n{DISCLAIMER}"
+
+        summary, sections = self._extract_summary_sections(markdown_report)
+        if not summary.strip() or len(sections) < 2:
+            return self._build_settlement_report_fallback(analysis, request, ai_unavailable=True)
+
+        return {
+            "title": "SmartFX AI 结算分析报告",
+            "summary": summary,
+            "sections": sections,
+            "markdown_report": markdown_report,
+        }
 
     async def generate_daily_report(self, context: dict) -> dict:
         if self.provider == "mock" or not self.api_key:
@@ -262,6 +380,45 @@ class KimiClient:
         except Exception:
             return self._build_chat_fallback(context, ai_unavailable=True)
 
+    async def recommend_settlement_window(self, analysis: dict, request: dict, market_context: dict) -> dict:
+        fallback = self._build_settlement_window_fallback(analysis, request, ai_unavailable=self.provider != "mock")
+        if self.provider == "mock" or not self.api_key:
+            return fallback
+
+        prompt = (
+            "请你为这次结算分析给出一个建议观察窗口，只返回 JSON，不要输出 Markdown。\n"
+            "JSON 格式必须是："
+            '{"recommended_window_days": 3, "recommended_window_reason": "一句到两句中文说明"}。\n'
+            "天数必须是 1 到 14 之间的整数。说明要结合当前汇率位置、近 30/90 天分位、近 7 天波动、到账日和业务目标。"
+            "不要使用投资承诺措辞。\n"
+            f"结算请求：{request}\n"
+            f"分析结果：{analysis}\n"
+            f"市场上下文：{market_context}"
+        )
+
+        try:
+            content = await self._chat_completion(
+                [
+                    {
+                        "role": "system",
+                        "content": "你是 SmartFX 的结算窗口建议助手，只输出合法 JSON。",
+                    },
+                    {"role": "user", "content": prompt},
+                ],
+                max_tokens=240,
+            )
+            payload = self._extract_json_object(content)
+            days = int(payload["recommended_window_days"])
+            reason = str(payload["recommended_window_reason"]).strip()
+            if not reason:
+                raise ValueError("empty recommended_window_reason")
+            return {
+                "recommended_window_days": min(14, max(1, days)),
+                "recommended_window_reason": reason,
+            }
+        except Exception:
+            return self._build_settlement_window_fallback(analysis, request, ai_unavailable=True)
+
     async def generate_settlement_report(self, analysis: dict, request: dict) -> dict:
         if self.provider == "mock" or not self.api_key:
             return self._build_settlement_report_fallback(analysis, request, ai_unavailable=False)
@@ -275,6 +432,7 @@ class KimiClient:
             "内容需要包括：标题、摘要、商业影响、执行建议、风险提示。"
             "请优先量化说明立即结算与等待更优窗口之间的金额差额、占比，以及对经营数据的意义。"
             f"请尤其围绕“{scenario['focus_metric']}”展开，并在建议里体现“{scenario['management_action']}”。"
+            "报告里请明确引用建议观察窗口天数和窗口理由。"
             "不要写成收益承诺，不要使用夸张措辞。"
             f"结尾必须保留：{DISCLAIMER}\n"
             f"请求参数：{request}\n"
@@ -289,7 +447,7 @@ class KimiClient:
                         "role": "system",
                         "content": (
                             "你是 SmartFX 的专业结算分析助手。"
-                            "你的重点是把汇率变化对业务利润、成本、回款折算、报价和预算的影响说清楚，"
+                            "你的重点是把汇率变化对业务利润、成本、回款折算、报价和预算的影响说明清楚，"
                             "并给出可执行的结算建议。请多使用金额、差额、占比来支撑结论。"
                             "如果是出口收汇，就多讲回款折算和利润释放；如果是进口付汇，就多讲采购成本和预算消耗。"
                         ),
@@ -298,15 +456,7 @@ class KimiClient:
                 ],
                 max_tokens=1400,
             )
-            if DISCLAIMER not in markdown_report:
-                markdown_report = f"{markdown_report}\n\n{DISCLAIMER}"
         except Exception:
             return self._build_settlement_report_fallback(analysis, request, ai_unavailable=True)
 
-        summary, sections = self._extract_summary_sections(markdown_report)
-        return {
-            "title": "SmartFX AI 结算分析报告",
-            "summary": summary,
-            "sections": sections,
-            "markdown_report": markdown_report,
-        }
+        return self._finalize_settlement_report(markdown_report, analysis, request)

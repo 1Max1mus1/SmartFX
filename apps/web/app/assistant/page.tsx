@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
+import { MarkdownContent } from "../../components/markdown-content";
 import { authorizedDemoFetch, ensureDemoAuth } from "../../lib/demo-auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8010/api";
@@ -149,7 +150,13 @@ export default function AssistantPage() {
                   }
                 >
                   <p className="text-sm uppercase tracking-[0.2em] opacity-60">{roleLabelMap[message.role] ?? message.role}</p>
-                  <p className="mt-2 whitespace-pre-wrap leading-8">{message.content}</p>
+                  <div className="mt-2">
+                    {message.role === "assistant" ? (
+                      <MarkdownContent content={message.content} />
+                    ) : (
+                      <p className="whitespace-pre-wrap leading-8">{message.content}</p>
+                    )}
+                  </div>
                 </article>
               ))
             )}

@@ -22,6 +22,8 @@ class SettlementAnalysisPayload(BaseModel):
     projected_best_case_value: float
     estimated_delta: float
     recommended_window_days: int
+    recommended_window_end_date: date
+    recommended_window_reason: str
     zone_label: str
     narrative: str
     disclaimer: str
