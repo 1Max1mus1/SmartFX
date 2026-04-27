@@ -7,6 +7,7 @@ from src.services.pro_report_service import ProReportService
 from src.services.rate_service import RateService
 from src.services.record_service import RecordService
 from src.services.settlement_service import SettlementService
+from src.services.student_payment_advice_service import StudentPaymentAdviceService
 
 __all__ = [
     "AutoRuleService",
@@ -18,4 +19,5 @@ __all__ = [
     "RateService",
     "RecordService",
     "SettlementService",
+    "StudentPaymentAdviceService",
 ]
