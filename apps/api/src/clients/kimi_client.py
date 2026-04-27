@@ -88,6 +88,49 @@ class KimiClient:
             raise ValueError("AI response missing JSON object")
         return json.loads(candidate[start : end + 1])
 
+    def _finalize_student_payment_advice_markdown(self, markdown: str, fallback: str) -> str:
+        if not isinstance(markdown, str) or len(markdown.strip()) < 40:
+            return fallback
+        if DISCLAIMER not in markdown:
+            markdown = f"{markdown}\n\n{DISCLAIMER}"
+        return markdown
+
+    async def generate_student_payment_advice(self, request: dict, advice_context: dict, fallback_markdown: str) -> str:
+        if self.provider == "mock" or not self.api_key:
+            return fallback_markdown
+
+        system_prompt = (
+            "You are SmartFX's student tuition payment advisor. "
+            "Respond in concise Simplified Chinese markdown. "
+            "You must explain the recommendation clearly, but you must not promise future price moves, "
+            "guaranteed savings, or certainty. Use words like 建议, 参考, 观察窗口. "
+            f"You must keep this exact disclaimer at the end: {DISCLAIMER}"
+        )
+        user_prompt = (
+            "Please rewrite the rule-based student payment advice into a user-friendly markdown answer.\n"
+            "Keep the recommendation itself unchanged. Do not invent new market data.\n"
+            "Prefer this structure:\n"
+            "## 今日建议\n"
+            "## 为什么这样判断\n"
+            "## 操作建议\n"
+            "## 风险提醒\n\n"
+            f"User request:\n{request}\n\n"
+            f"Rule-based advice context:\n{advice_context}\n\n"
+            f"Fallback markdown:\n{fallback_markdown}"
+        )
+
+        try:
+            markdown = await self._chat_completion(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                max_tokens=900,
+            )
+            return self._finalize_student_payment_advice_markdown(markdown, fallback_markdown)
+        except Exception:
+            return fallback_markdown
+
     def _settlement_business_impact(self, analysis: dict, request: dict) -> dict:
         impact_direction = "利润增厚" if request["optimization_goal"] == "maximize_income" else "成本压降"
         immediate_value = analysis["immediate_value"]
